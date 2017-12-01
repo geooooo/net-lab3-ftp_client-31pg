@@ -31,6 +31,7 @@ class FTPClient:
             self._trigger_error(error_message)
 
     def _trigger_error(self, message):
+        self._write("ABOR")
         self.socket_control.close()
         raise FTPClientError(message)
 
@@ -56,6 +57,28 @@ class FTPClient:
         self._write("QUIT")
         self.socket_control.close()
 
+    def _cd(self, path):
+        self._write("CWD {0}".format(path))
+        self._is_ok_status(250, "Ошибка при смене директории !")
+
+    def _mkdir(self, dir_name):
+        self._write("MKD {0}".format(dir_name))
+        self._is_ok_status(257, "Ошибка при создании директории !")
+
+    def _delte_dir(self, dir_name):
+        self._write("RMD {0}".format(dir_name))
+        self._is_ok_status(250, "Ошибка при удалении директории !")
+
+    def _delete_file(self, file_name):
+        self._write("DELE {0}".format(file_name))
+        self._is_ok_status(250, "Ошибка при удалении файла !")
+
+    def _rename(self, old_name, new_name):
+        self._write("RNFR {0}".format(old_name))
+        self._is_ok_status(350, "Ошибка при переименовывании файла !")
+        self._write("RNTO {0}".format(new_name))
+        self._is_ok_status(250, "Ошибка при переименовывании файла !")
+
     def authorize(self, login, pwd):
         self._write("USER {0}".format(login))
         self._is_ok_status(331, "Ошибка при авторизации !")
@@ -64,19 +87,20 @@ class FTPClient:
         self._is_authorize = True
 
     def cd(self, path):
-        pass
+        self._cd(path)
 
     def mkdir(self, dir_name):
-        pass
+        self._mkdir(dir_name)
 
     def delete_dir(self, dir_name):
-        pass
+        self._delete_dir(dir_name)
 
     def delete_file(self, file_name):
-        pass
+        self._delete_file(file_name)
 
     def rename(self, old_name, new_name):
-        pass
+        self._rename(old_name, new_name)
 
     def list(self, dir_name):
+        # TODO: list
         pass
