@@ -53,9 +53,41 @@ class FTPClient:
 
     def put_file(self, file_name):
         self._check_connection()
+        self._pasv()
+        self._is_ok_status(227, "Не удалось открыть пассивное соединение !")
+        response = self._read(True)
+        _, addr = response.rsplit(" ", 1)
+        ip, port = self._get_addr_server(addr[1:-2])
+        self._type("I")
+        self._is_ok_status(200, "Не удалось отправить файл !")
+        self._stor(file_name.rsplit("/")[-1])
+        socket_data = socket()
+        socket_data.connect((ip, port))
+        file_data = open(file_name, "rb").read()
+        socket_data.send(file_data)
+        self._is_ok_status(150, "Не удалось отправить файл !")
+        socket_data.close()
 
     def get_file(self, file_name):
         self._check_connection()
+        self._pasv()
+        self._is_ok_status(227, "Не удалось открыть пассивное соединение !")
+        response = self._read(True)
+        _, addr = response.rsplit(" ", 1)
+        ip, port = self._get_addr_server(addr[1:-2])
+        self._type("I")
+        self._is_ok_status(200, "Не удалось получить файл !")
+        self._retr(file_name)
+        socket_data = socket()
+        socket_data.connect((ip, port))
+        with open(file_name.rsplit("/")[-1], "wb") as f:
+            while True:
+                data = socket_data.recv(self._DATA_LEN)
+                if not data:
+                    break
+                f.write(data)
+        self._is_ok_status(150, "Не удалось получить файл !")
+        socket_data.close()
 
     # private
 
@@ -63,7 +95,6 @@ class FTPClient:
     _TIMEOUT = 60
 
     def __init__(self, host="localhost", port=21, login="anonymous", pwd=""):
-        self._buffer = []
         self._host = host
         self._port = port
         self._login = login
@@ -104,11 +135,17 @@ class FTPClient:
     def _write(self, data):
         self._socket_control.send("{0}\n".format(data).encode("utf-8"))
 
-    def _read(self):
-        if not self._buffer:
-            data = self._socket_control.recv(self._DATA_LEN).decode("utf-8")
-            self._buffer.extend([msg for msg in data.split("\r\n") if msg])
-        return self._buffer.pop(0)
+    def _read(self, is_return_last=False):
+        if is_return_last and hasattr(self, "_read_last_return"):
+            result = self._read_last_return
+        else:
+            if not hasattr(self, "_buffer"):
+                self._buffer = []
+            if not self._buffer:
+                data = self._socket_control.recv(self._DATA_LEN).decode()
+                self._buffer.extend([msg for msg in data.split("\r\n") if msg])
+            result = self._read_last_return = self._buffer.pop(0)
+        return result
 
     def _parse_response(self, response):
         print(response)
@@ -136,10 +173,20 @@ class FTPClient:
         byte_low = port & 0x00ff
         return (byte_high, byte_low)
 
+    def _port_decode(self, port_bytes):
+        byte_high, byte_low = port_bytes
+        return byte_high << 8 | byte_low
+
     def _get_addr_self(self):
         host = "127.0.0.1"
         port = 8814
         return (host, port)
+
+    def _get_addr_server(self, addr):
+        ip, byte_high, byte_low = addr.rsplit(",", 2)
+        ip = ip.replace(",", ".")
+        port = self._port_decode((int(byte_high), int(byte_low)))
+        return ip, port
 
     def _close(self):
         self._write("QUIT")
@@ -177,27 +224,14 @@ class FTPClient:
         self._write("PORT {0},{1}".format(host, port))
         self._is_ok_status(200, "Ошибка при создании канала передачи данных !")
 
-    def _retr(self):
-        pass
-        # TODO: retr
+    def _pasv(self):
+        self._write("PASV")
 
-    def _stor(self):
-        pass
-        # TODO: stor
+    def _retr(self, file_name):
+        self._write("RETR {0}".format(file_name))
 
-    def _pasv(sefl):
-        pass
-        # TODO: pasv
+    def _stor(self, file_name):
+        self._write("STOR {0}".format(file_name))
 
-    def _type(sefl):
-        pass
-        # TODO: type
-
-    def _mode(self):
-        pass
-        # TODO: mode
-
-
-client = FTPClient(login="ftp-test", pwd="^@bf@H2UKn@m")
-client.list(".")
-client.list("papka")
+    def _type(self, ctype):
+        self._write("TYPE {0}".format(ctype))
